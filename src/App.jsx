@@ -29,8 +29,8 @@ interFont.rel = "stylesheet";
 document.head.appendChild(interFont);
 
 // --- API endpoint URL ---
-const API_URL = "https://server-9cdv.onrender.com//api/issues";
-const AUTH_URL = "https://server-9cdv.onrender.com//api/auth";
+const API_URL = "https://server-9cdv.onrender.com/api/issues";
+const AUTH_URL = "https://server-9cdv.onrender.com/api/auth";
 
 // --- Contexts for State Management ---
 const AuthContext = createContext();
