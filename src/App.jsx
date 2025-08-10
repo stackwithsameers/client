@@ -520,7 +520,7 @@ const DashboardPage = () => {
 
 // --- Page: Issue Details ---
 const IssueDetailsPage = () => {
-  const { id } = useParams();
+  const { id } = useParams(); // Retrieves the ID from the URL parameters
   const navigate = useNavigate();
   const { user } = useAuth();
   const { issues, loading, error, updateIssue, deleteIssue } = useIssues();
@@ -529,7 +529,28 @@ const IssueDetailsPage = () => {
   const [submissionError, setSubmissionError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Find the issue by its 'id' (which maps to MongoDB's _id)
+  // Check if the ID from the URL is undefined or null early
+  if (!id) {
+    // If no ID is present in the URL, display an error or redirect
+    return (
+      <div className="text-red-500 text-center mt-8 p-4 bg-white rounded-lg shadow-md">
+        <h2 className="text-xl font-bold mb-2">Error: Issue ID Missing!</h2>
+        <p>
+          It looks like you tried to access an issue without a valid ID in the
+          URL.
+        </p>
+        <Button
+          variant="primary"
+          onClick={() => navigate("/")}
+          className="mt-4"
+        >
+          Go to Dashboard
+        </Button>
+      </div>
+    );
+  }
+
+  // Find the issue by its 'id' (which maps to MongoDB's _id on the backend)
   const issue = useMemo(
     () => issues.find((i) => String(i.id) === id),
     [issues, id]
@@ -537,7 +558,7 @@ const IssueDetailsPage = () => {
 
   const handleUpdateIssue = async (updatedData) => {
     setSubmissionError(null);
-    const result = await updateIssue(id, updatedData);
+    const result = await updateIssue(id, updatedData); // 'id' here is the valid ID from useParams()
     if (result.success) {
       setIsEditing(false);
     } else {
@@ -547,9 +568,9 @@ const IssueDetailsPage = () => {
 
   const handleConfirmDelete = async () => {
     setIsModalOpen(false);
-    const result = await deleteIssue(id);
+    const result = await deleteIssue(id); // 'id' here is the valid ID from useParams()
     if (result.success) {
-      navigate("/");
+      navigate("/"); // Redirect to dashboard after successful deletion
     } else {
       setSubmissionError(result.error);
     }
@@ -568,10 +589,29 @@ const IssueDetailsPage = () => {
     }
   };
 
+  // Display loading spinner while data is being fetched
   if (loading) return <Spinner />;
+
+  // Display error if issues failed to load (e.g., network error)
   if (error)
     return <div className="text-red-500 text-center mt-8">Error: {error}</div>;
-  if (!issue) return <div className="text-center mt-8">Issue not found.</div>;
+
+  // If after loading, no issue is found, display a "not found" message
+  if (!issue) {
+    return (
+      <div className="text-center mt-8 p-4 bg-white rounded-lg shadow-md">
+        <h2 className="text-xl font-bold mb-2">Issue Not Found</h2>
+        <p>The issue with ID "{id}" could not be found.</p>
+        <Button
+          variant="primary"
+          onClick={() => navigate("/")}
+          className="mt-4"
+        >
+          Go to Dashboard
+        </Button>
+      </div>
+    );
+  }
 
   const isReporter = user && String(user.id) === String(issue.userId);
   const isTechnician = user?.role === "technician";
@@ -1159,7 +1199,12 @@ const IssueProvider = ({ children }) => {
 
         let issuesList = await response.json();
 
-        setIssues(issuesList);
+        // Ensure that the issue IDs are strings for consistency with URL params
+        const processedIssues = issuesList.map((issue) => ({
+          ...issue,
+          id: String(issue._id || issue.id), // Use _id if available, otherwise id (from MySQL transition)
+        }));
+        setIssues(processedIssues);
         setLoading(false);
       } catch (err) {
         console.error("Failed to fetch issues:", err);
@@ -1195,9 +1240,20 @@ const IssueProvider = ({ children }) => {
           const errorData = await response.json();
           throw new Error(errorData.message || "Failed to add issue.");
         }
-        // Re-fetch issues to update the list after adding
-        // This is a simple approach; for larger apps, consider more optimized state updates
-        // await fetchIssues(); // This would cause a re-render of the entire list
+        // Trigger re-fetch of issues to update the list after adding
+        // This ensures the new issue is displayed immediately.
+        // Call fetchIssues directly here, or rely on the useEffect dependency on 'user'
+        // For simplicity and immediate update after successful action, let's trigger it manually
+        const responseUpdatedList = await fetch(API_URL, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const updatedIssuesList = await responseUpdatedList.json();
+        const processedUpdatedIssues = updatedIssuesList.map((issue) => ({
+          ...issue,
+          id: String(issue._id || issue.id),
+        }));
+        setIssues(processedUpdatedIssues);
+
         return { success: true };
       } catch (err) {
         console.error("Error adding issue:", err);
@@ -1225,8 +1281,17 @@ const IssueProvider = ({ children }) => {
           const errorData = await response.json();
           throw new Error(errorData.message || "Failed to update issue.");
         }
-        // Re-fetch issues to update the list after updating
-        // await fetchIssues();
+        // Trigger re-fetch of issues to update the list after updating
+        const responseUpdatedList = await fetch(API_URL, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const updatedIssuesList = await responseUpdatedList.json();
+        const processedUpdatedIssues = updatedIssuesList.map((issue) => ({
+          ...issue,
+          id: String(issue._id || issue.id),
+        }));
+        setIssues(processedUpdatedIssues);
+
         return { success: true };
       } catch (err) {
         console.error("Error updating issue:", err);
@@ -1249,8 +1314,17 @@ const IssueProvider = ({ children }) => {
           const errorData = await response.json();
           throw new Error(errorData.message || "Failed to delete issue.");
         }
-        // Re-fetch issues to update the list after deleting
-        // await fetchIssues();
+        // Trigger re-fetch of issues to update the list after deleting
+        const responseUpdatedList = await fetch(API_URL, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const updatedIssuesList = await responseUpdatedList.json();
+        const processedUpdatedIssues = updatedIssuesList.map((issue) => ({
+          ...issue,
+          id: String(issue._id || issue.id),
+        }));
+        setIssues(processedUpdatedIssues);
+
         return { success: true };
       } catch (err) {
         console.error("Error deleting issue:", err);
