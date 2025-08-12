@@ -1,3 +1,4 @@
+// client/src/App.jsx
 import React, {
   useState,
   useEffect,
@@ -29,8 +30,10 @@ interFont.rel = "stylesheet";
 document.head.appendChild(interFont);
 
 // --- API endpoint URL ---
-const API_URL = "https://server-9cdv.onrender.com/api/issues";
-const AUTH_URL = "https://server-9cdv.onrender.com/api/auth";
+// IMPORTANT: Replace 'http://localhost:5000' with your actual deployed Vercel backend URL
+const LIVE_BACKEND_URL = "https://server-9cdv.onrender.com/"; // <-- YOU MUST CHANGE THIS!
+const API_URL = `${LIVE_BACKEND_URL}/api/issues`;
+const AUTH_URL = `${LIVE_BACKEND_URL}/api/auth`;
 
 // --- Contexts for State Management ---
 const AuthContext = createContext();
@@ -135,6 +138,11 @@ const Navbar = () => {
                   Report Issue
                 </Link>
               )}
+              {user.role === "admin" && ( // Admin link
+                <Link to="/admin" className="hover:text-blue-300">
+                  Admin Panel
+                </Link>
+              )}
               <span className="text-sm px-2 py-1 rounded-md bg-gray-700">
                 👤 {user.username} ({user.role})
               </span>
@@ -167,6 +175,15 @@ const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return <Spinner />;
   return user ? children : <Navigate to="/login" replace />;
+};
+
+// --- Component: Admin Route Wrapper ---
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <Spinner />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "admin") return <Navigate to="/" replace />; // Redirect if not admin
+  return children;
 };
 
 // --- Component: Issue Card ---
@@ -243,6 +260,7 @@ const IssueForm = ({
 }) => {
   const { user } = useAuth();
   const isTechnician = user?.role === "technician";
+  const isAdmin = user?.role === "admin"; // Check for admin role
 
   const [formData, setFormData] = useState({
     title: "",
@@ -401,7 +419,7 @@ const IssueForm = ({
         ></textarea>
       </div>
 
-      {isTechnician && (
+      {(isTechnician || isAdmin) && ( // Technicians and Admins can change status
         <div className="mb-6">
           <label className="block text-gray-700 text-sm font-bold mb-2">
             Status:
@@ -452,6 +470,7 @@ const IssueForm = ({
 const DashboardPage = () => {
   const { user } = useAuth();
   const { issues, loading, error } = useIssues();
+  const { downloadIssuesCsv } = useIssues(); // Get the new download function
 
   const openIssues = useMemo(
     () => issues.filter((issue) => issue.status === "OPEN"),
@@ -509,6 +528,19 @@ const DashboardPage = () => {
         </div>
       )}
 
+      {user?.role === "admin" && ( // Admin CSV Export Button
+        <div className="text-center mb-8">
+          {/* Changed onClick to use the new downloadIssuesCsv function */}
+          <Button
+            variant="outline"
+            onClick={downloadIssuesCsv}
+            className="text-lg px-6 py-3"
+          >
+            ⬇️ Download All Issues (CSV)
+          </Button>
+        </div>
+      )}
+
       <IssueList
         issues={recentIssues}
         title="Recent Issues"
@@ -520,7 +552,7 @@ const DashboardPage = () => {
 
 // --- Page: Issue Details ---
 const IssueDetailsPage = () => {
-  const { id } = useParams(); // Retrieves the ID from the URL parameters
+  const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { issues, loading, error, updateIssue, deleteIssue } = useIssues();
@@ -550,7 +582,7 @@ const IssueDetailsPage = () => {
     );
   }
 
-  // Find the issue by its 'id' (which maps to MongoDB's _id on the backend)
+  // Find the issue by its 'id' (which maps to MySQL's id)
   const issue = useMemo(
     () => issues.find((i) => String(i.id) === id),
     [issues, id]
@@ -558,7 +590,7 @@ const IssueDetailsPage = () => {
 
   const handleUpdateIssue = async (updatedData) => {
     setSubmissionError(null);
-    const result = await updateIssue(id, updatedData); // 'id' here is the valid ID from useParams()
+    const result = await updateIssue(id, updatedData);
     if (result.success) {
       setIsEditing(false);
     } else {
@@ -568,9 +600,9 @@ const IssueDetailsPage = () => {
 
   const handleConfirmDelete = async () => {
     setIsModalOpen(false);
-    const result = await deleteIssue(id); // 'id' here is the valid ID from useParams()
+    const result = await deleteIssue(id);
     if (result.success) {
-      navigate("/"); // Redirect to dashboard after successful deletion
+      navigate("/");
     } else {
       setSubmissionError(result.error);
     }
@@ -615,6 +647,7 @@ const IssueDetailsPage = () => {
 
   const isReporter = user && String(user.id) === String(issue.userId);
   const isTechnician = user?.role === "technician";
+  const isAdmin = user?.role === "admin";
 
   return (
     <div className="p-4">
@@ -625,7 +658,7 @@ const IssueDetailsPage = () => {
       >
         &larr; Back to Dashboard
       </Button>
-      {isEditing && (isReporter || isTechnician) ? (
+      {isEditing && (isReporter || isTechnician || isAdmin) ? ( // Admin can also edit
         <IssueForm
           initialData={issue}
           isEditMode={true}
@@ -676,12 +709,12 @@ const IssueDetailsPage = () => {
           <p className="text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-md border border-gray-200">
             {issue.description || "No description provided for this issue."}
           </p>
-          {(isReporter || isTechnician) && (
+          {(isReporter || isTechnician || isAdmin) && ( // Admin can also edit
             <div className="mt-8 flex space-x-4">
               <Button variant="primary" onClick={() => setIsEditing(true)}>
                 Edit
               </Button>
-              {isReporter && (
+              {(isReporter || isAdmin) && ( // Only reporter or admin can delete
                 <Button variant="danger" onClick={() => setIsModalOpen(true)}>
                   Delete
                 </Button>
@@ -739,6 +772,47 @@ const NewIssuePage = () => {
         onSubmit={handleSubmit}
         loading={loading}
         error={submissionError}
+      />
+    </div>
+  );
+};
+
+// --- Page: Admin Panel ---
+const AdminPanelPage = () => {
+  const { user } = useAuth();
+  const { issues, loading, error } = useIssues(); // Fetch all issues via IssueProvider
+  const { downloadIssuesCsv } = useIssues(); // Get the new download function
+
+  if (loading) return <Spinner />;
+  if (error)
+    return <div className="text-red-500 text-center mt-8">Error: {error}</div>;
+
+  return (
+    <div className="p-4">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6 text-center">
+        Admin Panel
+      </h1>
+      <p className="text-lg text-gray-700 text-center mb-8">
+        Welcome, <span className="font-semibold">{user?.username}</span>! As an
+        admin, you have full control over all issues.
+      </p>
+
+      <div className="flex flex-col items-center space-y-4 mb-8">
+        {/* Changed onClick to use the new downloadIssuesCsv function */}
+        <Button
+          variant="primary"
+          onClick={downloadIssuesCsv}
+          className="text-lg px-6 py-3"
+        >
+          ⬇️ Download All Issues (CSV)
+        </Button>
+        {/* You could add more admin-specific tools here, e.g., manage users */}
+      </div>
+
+      <IssueList
+        issues={issues} // Display all issues for admin
+        title="All System Issues"
+        emptyMessage="No issues in the system."
       />
     </div>
   );
@@ -1044,21 +1118,25 @@ const RegisterPage = () => {
               Role:
             </label>
             <div className="flex flex-wrap gap-4">
-              {["customer", "technician"].map((roleOption) => (
-                <label key={roleOption} className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    name="role"
-                    value={roleOption}
-                    checked={formData.role === roleOption}
-                    onChange={handleChange}
-                    className="form-radio h-4 w-4 text-blue-600"
-                  />
-                  <span className="ml-2 text-gray-700">
-                    {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
-                  </span>
-                </label>
-              ))}
+              {["customer", "technician", "admin"].map(
+                (
+                  roleOption // Added 'admin' to registration options
+                ) => (
+                  <label key={roleOption} className="inline-flex items-center">
+                    <input
+                      type="radio"
+                      name="role"
+                      value={roleOption}
+                      checked={formData.role === roleOption}
+                      onChange={handleChange}
+                      className="form-radio h-4 w-4 text-blue-600"
+                    />
+                    <span className="ml-2 text-gray-700">
+                      {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
+                    </span>
+                  </label>
+                )
+              )}
             </div>
           </div>
           <div className="flex items-center justify-between">
@@ -1180,38 +1258,51 @@ const IssueProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const fetchIssues = useCallback(async () => {
+    // Made fetchIssues a useCallback
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setIssues([]);
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch(API_URL, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // Check if response is OK before attempting to parse as JSON
+      if (!response.ok) {
+        const errorText = await response.text(); // Get raw text to inspect
+        console.error("Backend response not OK:", response.status, errorText);
+        throw new Error(
+          `Failed to fetch issues: ${errorText || response.statusText}`
+        );
+      }
+
+      // Attempt to parse JSON
+      const issuesList = await response.json();
+
+      // Ensure that the issue IDs are strings for consistency with URL params
+      const processedIssues = issuesList.map((issue) => ({
+        ...issue,
+        id: String(issue.id), // Ensure ID is a string
+      }));
+      setIssues(processedIssues);
+      setLoading(false);
+    } catch (err) {
+      console.error("Error in fetchIssues:", err);
+      setError(
+        `Failed to load issues: ${err.message}. Please ensure your backend is running and accessible at ${LIVE_BACKEND_URL}.`
+      );
+      setLoading(false);
+    }
+  }, [user]); // Dependency on user to re-fetch when user changes
+
   useEffect(() => {
-    const fetchIssues = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setIssues([]);
-        setLoading(false);
-        return;
-      }
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch(API_URL, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) throw new Error("Failed to fetch issues");
-
-        let issuesList = await response.json();
-
-        // Ensure that the issue IDs are strings for consistency with URL params
-        const processedIssues = issuesList.map((issue) => ({
-          ...issue,
-          id: String(issue._id || issue.id), // Use _id if available, otherwise id (from MySQL transition)
-        }));
-        setIssues(processedIssues);
-        setLoading(false);
-      } catch (err) {
-        console.error("Failed to fetch issues:", err);
-        setError("Failed to load issues.");
-        setLoading(false);
-      }
-    };
     // Fetch issues only if user is logged in
     if (user) {
       fetchIssues();
@@ -1219,7 +1310,7 @@ const IssueProvider = ({ children }) => {
       setIssues([]); // Clear issues if user logs out
       setLoading(false);
     }
-  }, [user]);
+  }, [user, fetchIssues]); // Added fetchIssues to dependencies
 
   const addIssue = useCallback(
     async (issueData) => {
@@ -1240,28 +1331,15 @@ const IssueProvider = ({ children }) => {
           const errorData = await response.json();
           throw new Error(errorData.message || "Failed to add issue.");
         }
-        // Trigger re-fetch of issues to update the list after adding
-        // This ensures the new issue is displayed immediately.
-        // Call fetchIssues directly here, or rely on the useEffect dependency on 'user'
-        // For simplicity and immediate update after successful action, let's trigger it manually
-        const responseUpdatedList = await fetch(API_URL, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const updatedIssuesList = await responseUpdatedList.json();
-        const processedUpdatedIssues = updatedIssuesList.map((issue) => ({
-          ...issue,
-          id: String(issue._id || issue.id),
-        }));
-        setIssues(processedUpdatedIssues);
-
+        await fetchIssues(); // Re-fetch issues to update the list after adding
         return { success: true };
       } catch (err) {
         console.error("Error adding issue:", err);
         return { success: false, error: err.message };
       }
     },
-    [user]
-  );
+    [user, fetchIssues]
+  ); // Added fetchIssues to dependencies
 
   const updateIssue = useCallback(
     async (id, updatedData) => {
@@ -1281,25 +1359,15 @@ const IssueProvider = ({ children }) => {
           const errorData = await response.json();
           throw new Error(errorData.message || "Failed to update issue.");
         }
-        // Trigger re-fetch of issues to update the list after updating
-        const responseUpdatedList = await fetch(API_URL, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const updatedIssuesList = await responseUpdatedList.json();
-        const processedUpdatedIssues = updatedIssuesList.map((issue) => ({
-          ...issue,
-          id: String(issue._id || issue.id),
-        }));
-        setIssues(processedUpdatedIssues);
-
+        await fetchIssues(); // Re-fetch issues to update the list after updating
         return { success: true };
       } catch (err) {
         console.error("Error updating issue:", err);
         return { success: false, error: err.message };
       }
     },
-    [user]
-  );
+    [user, fetchIssues]
+  ); // Added fetchIssues to dependencies
 
   const deleteIssue = useCallback(
     async (id) => {
@@ -1314,29 +1382,79 @@ const IssueProvider = ({ children }) => {
           const errorData = await response.json();
           throw new Error(errorData.message || "Failed to delete issue.");
         }
-        // Trigger re-fetch of issues to update the list after deleting
-        const responseUpdatedList = await fetch(API_URL, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const updatedIssuesList = await responseUpdatedList.json();
-        const processedUpdatedIssues = updatedIssuesList.map((issue) => ({
-          ...issue,
-          id: String(issue._id || issue.id),
-        }));
-        setIssues(processedUpdatedIssues);
-
+        await fetchIssues(); // Re-fetch issues to update the list after deleting
         return { success: true };
       } catch (err) {
         console.error("Error deleting issue:", err);
         return { success: false, error: err.message };
       }
     },
-    [user]
-  );
+    [user, fetchIssues]
+  ); // Added fetchIssues to dependencies
+
+  const downloadIssuesCsv = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("You must be logged in to download issues."); // Using alert for simplicity, consider a custom modal
+      return { success: false, error: "No authentication token found." };
+    }
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/admin/export/issues`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "text/csv", // Request CSV format
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("CSV download failed:", response.status, errorText);
+        throw new Error(
+          `Failed to download CSV: ${errorText || response.statusText}`
+        );
+      }
+
+      // Get the response as a Blob
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "issues_export.csv"; // Suggested filename
+      document.body.appendChild(a);
+      a.click(); // Trigger download
+      a.remove(); // Clean up the element
+      window.URL.revokeObjectURL(url); // Release the object URL
+
+      setLoading(false);
+      return { success: true };
+    } catch (err) {
+      console.error("Error during CSV download:", err);
+      setLoading(false);
+      setError(`Failed to download CSV: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }, [user]); // Dependency on user to ensure token is fresh
 
   const value = useMemo(
-    () => ({ issues, loading, error, addIssue, updateIssue, deleteIssue }),
-    [issues, loading, error, addIssue, updateIssue, deleteIssue]
+    () => ({
+      issues,
+      loading,
+      error,
+      addIssue,
+      updateIssue,
+      deleteIssue,
+      downloadIssuesCsv,
+    }),
+    [
+      issues,
+      loading,
+      error,
+      addIssue,
+      updateIssue,
+      deleteIssue,
+      downloadIssuesCsv,
+    ]
   );
 
   return (
@@ -1379,6 +1497,15 @@ export default function App() {
                   </PrivateRoute>
                 }
               />
+              <Route
+                path="/admin"
+                element={
+                  <AdminRoute>
+                    <AdminPanelPage />
+                  </AdminRoute>
+                }
+              />{" "}
+              {/* New Admin Panel Route */}
             </Routes>
           </div>
         </IssueProvider>
