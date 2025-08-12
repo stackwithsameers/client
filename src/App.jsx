@@ -31,7 +31,7 @@ document.head.appendChild(interFont);
 
 // --- API endpoint URL ---
 // IMPORTANT: Replace 'http://localhost:5000' with your actual deployed Vercel backend URL
-const LIVE_BACKEND_URL = "https://server-9cdv.onrender.com/"; // <-- YOU MUST CHANGE THIS!
+const LIVE_BACKEND_URL = "https://server-l22x.onrender.com/"; // <-- YOU MUST CHANGE THIS!
 const API_URL = `${LIVE_BACKEND_URL}/api/issues`;
 const AUTH_URL = `${LIVE_BACKEND_URL}/api/auth`;
 
